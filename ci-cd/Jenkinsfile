@@ -1,18 +1,63 @@
-# CI/CD Pipeline Overview
+pipeline {
+    agent any
 
-## Purpose
-The Jenkins pipeline standardises how client services are built and deployed across environments.
-It enforces validation, controlled deployments, and approval gates.
+    environment {
+        APP_NAME = "client-service"
+        AWS_REGION = "eu-west-2"
+    }
 
-## Pipeline Stages
-- Checkout: Retrieves source code
-- Validate: Runs basic checks before build
-- Build: Builds the application artifact
-- Docker Build: Packages the application into a container image
-- Deploy to Dev: Automatic deployment from develop branch
-- Deploy to Staging: Manual approval required from main branch
+    stages {
 
-## Controls
-- Branch-based deployment strategy
-- Manual approval for staging releases
-- Centralised pipeline logic maintained by DevOps
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Validate') {
+            steps {
+                sh 'echo "Running basic validation checks"'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'echo "Building application artifact"'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh 'echo "Building Docker image for ${APP_NAME}"'
+            }
+        }
+
+        stage('Deploy to Dev') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh 'echo "Deploying to DEV environment"'
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'main'
+            }
+            steps {
+                input message: 'Approve deployment to STAGING?'
+                sh 'echo "Deploying to STAGING environment"'
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo 'Pipeline failed. Notifying DevOps team.'
+        }
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+    }
+}
