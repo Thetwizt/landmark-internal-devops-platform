@@ -1,63 +1,36 @@
-pipeline {
-    agent any
-
-    environment {
-        APP_NAME = "client-service"
-        AWS_REGION = "eu-west-2"
+stage('Validate') {
+    steps {
+        sh 'bash scripts/validate.sh'
     }
+}
 
-    stages {
-
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Validate') {
-            steps {
-                sh 'echo "Running basic validation checks"'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'echo "Building application artifact"'
-            }
-        }
-
-        stage('Docker Build') {
-            steps {
-                sh 'echo "Building Docker image for ${APP_NAME}"'
-            }
-        }
-
-        stage('Deploy to Dev') {
-            when {
-                branch 'develop'
-            }
-            steps {
-                sh 'echo "Deploying to DEV environment"'
-            }
-        }
-
-        stage('Deploy to Staging') {
-            when {
-                branch 'main'
-            }
-            steps {
-                input message: 'Approve deployment to STAGING?'
-                sh 'echo "Deploying to STAGING environment"'
-            }
-        }
+stage('Build') {
+    steps {
+        sh 'bash scripts/build.sh'
     }
+}
 
-    post {
-        failure {
-            echo 'Pipeline failed. Notifying DevOps team.'
-        }
-        success {
-            echo 'Pipeline completed successfully.'
-        }
+stage('Docker Build') {
+    steps {
+        sh 'bash scripts/docker-build.sh'
+    }
+}
+
+stage('Deploy to Dev') {
+    when {
+        branch 'develop'
+    }
+    steps {
+        sh 'bash scripts/deploy.sh dev'
+    }
+}
+
+stage('Deploy to Staging') {
+    when {
+        branch 'main'
+    }
+    steps {
+        input message: 'Approve deployment to STAGING?'
+        sh 'bash scripts/deploy.sh staging'
     }
 }
