@@ -1,0 +1,9 @@
+{
+  "name": "landmark-web-app",
+  "version": "1.0.0",
+  "description": "Internal web app for Landmark DevOps platform",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  }
+}
