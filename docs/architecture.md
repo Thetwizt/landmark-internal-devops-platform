@@ -20,3 +20,10 @@ across multiple environments.
 ## Responsibility
 The platform is maintained by the DevOps team and is designed to support multiple client services
 while ensuring reliability, security, and consistency across deployments.
+## Application Services
+
+### Web App
+- Node.js HTTP service
+- Runs on port 3000
+- Containerized using Docker
+- Built and deployed via CI/CD pipelines
