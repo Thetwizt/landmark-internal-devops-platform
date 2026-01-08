@@ -34,3 +34,29 @@ stage('Deploy to Staging') {
         sh 'bash scripts/deploy.sh staging'
     }
 }
+pipeline {
+    agent any
+
+    stages {
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Change directory to the service
+                    dir('services/web-app') {
+                        // Build Docker image
+                        sh 'docker build -t web-app:latest .'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Docker build successful!'
+        }
+        failure {
+            echo 'Docker build failed!'
+        }
+    }
+}
