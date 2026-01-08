@@ -60,3 +60,55 @@ pipeline {
         }
     }
 }
+pipeline {
+    agent any
+
+    stages {
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    dir('services/web-app') {
+                        sh 'docker build -t web-app:latest .'
+                    }
+                }
+            }
+        }
+
+        stage('Tag Docker Image for ECR') {
+            steps {
+                script {
+                    sh '''
+                    docker tag web-app:latest 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Login to ECR') {
+            steps {
+                script {
+                    sh '''
+                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 371601827796.dkr.ecr.us-east-1.amazonaws.com
+                    '''
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                script {
+                    sh 'docker push 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Docker image built and pushed to ECR successfully!'
+        }
+        failure {
+            echo 'Build or push failed. Check Jenkins logs for errors.'
+        }
+    }
+}
