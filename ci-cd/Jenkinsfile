@@ -112,3 +112,17 @@ pipeline {
         }
     }
 }
+stage('Deploy to EC2') {
+    steps {
+        sshagent(credentials: ['ec2-ssh-key']) {
+            sh '''
+            ssh -o StrictHostKeyChecking=no ec2-user@<EC2_PUBLIC_IP> << EOF
+              docker pull 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest
+              docker stop web-app || true
+              docker rm web-app || true
+              docker run -d -p 80:3000 --name web-app 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest
+            EOF
+            '''
+        }
+    }
+}
