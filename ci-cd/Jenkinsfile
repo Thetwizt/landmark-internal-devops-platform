@@ -1,128 +1,74 @@
-stage('Validate') {
-    steps {
-        sh 'bash scripts/validate.sh'
-    }
-}
-
-stage('Build') {
-    steps {
-        sh 'bash scripts/build.sh'
-    }
-}
-
-stage('Docker Build') {
-    steps {
-        sh 'bash scripts/docker-build.sh'
-    }
-}
-
-stage('Deploy to Dev') {
-    when {
-        branch 'develop'
-    }
-    steps {
-        sh 'bash scripts/deploy.sh dev'
-    }
-}
-
-stage('Deploy to Staging') {
-    when {
-        branch 'main'
-    }
-    steps {
-        input message: 'Approve deployment to STAGING?'
-        sh 'bash scripts/deploy.sh staging'
-    }
-}
 pipeline {
     agent any
 
+    environment {
+        AWS_REGION = "us-east-1"
+        AWS_ACCOUNT_ID = "YOUR_ACCOUNT_ID"
+        ECR_REPO = "landmark-web-app"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+    }
+
+    tools {
+        jdk 'jdk-21'
+    }
+
     stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/Thetwizt/landmark-internal-devops-platform.git'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                script {
-                    // Change directory to the service
-                    dir('services/web-app') {
-                        // Build Docker image
-                        sh 'docker build -t web-app:latest .'
-                    }
-                }
+                sh '''
+                docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Authenticate to ECR') {
+            steps {
+                sh '''
+                aws ecr get-login-password --region ${AWS_REGION} \
+                | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                docker push ${ECR_URI}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                sh '''
+                docker stop web-app || true
+                docker rm web-app || true
+
+                docker run -d \
+                  --name web-app \
+                  -p 3000:3000 \
+                  ${ECR_URI}:${IMAGE_TAG}
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'Docker build successful!'
+            echo "✅ Build & Deployment Successful"
         }
         failure {
-            echo 'Docker build failed!'
-        }
-    }
-}
-pipeline {
-    agent any
-
-    stages {
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    dir('services/web-app') {
-                        sh 'docker build -t web-app:latest .'
-                    }
-                }
-            }
-        }
-
-        stage('Tag Docker Image for ECR') {
-            steps {
-                script {
-                    sh '''
-                    docker tag web-app:latest 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest
-                    '''
-                }
-            }
-        }
-
-        stage('Login to ECR') {
-            steps {
-                script {
-                    sh '''
-                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 371601827796.dkr.ecr.us-east-1.amazonaws.com
-                    '''
-                }
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                script {
-                    sh 'docker push 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest'
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            echo 'Docker image built and pushed to ECR successfully!'
-        }
-        failure {
-            echo 'Build or push failed. Check Jenkins logs for errors.'
-        }
-    }
-}
-stage('Deploy to EC2') {
-    steps {
-        sshagent(credentials: ['ec2-ssh-key']) {
-            sh '''
-            ssh -o StrictHostKeyChecking=no ec2-user@<EC2_PUBLIC_IP> << EOF
-              docker pull 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest
-              docker stop web-app || true
-              docker rm web-app || true
-              docker run -d -p 80:3000 --name web-app 371601827796.dkr.ecr.us-east-1.amazonaws.com/web-app:latest
-            EOF
-            '''
+            echo "❌ Build Failed — Check Logs"
         }
     }
 }
