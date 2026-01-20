@@ -23,13 +23,15 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                sh '''
-                cd services/web-app                        # Navigate to correct Dockerfile location
-                docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
-                '''
+       stage('Build Docker Image') {
+    steps {
+        sh '''
+        docker build -t ${ECR_REPO}:${IMAGE_TAG} services/web-app
+        docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
+        '''
+    }
+}
+
             }
         }
 
