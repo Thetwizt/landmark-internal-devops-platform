@@ -3,14 +3,14 @@ pipeline {
 
     environment {
         AWS_REGION = "us-east-1"
-        AWS_ACCOUNT_ID = "YOUR_ACCOUNT_ID"
+        AWS_ACCOUNT_ID = "371601827796"               // Filled in your actual AWS account ID
         ECR_REPO = "landmark-web-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
         ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
     tools {
-        jdk 'jdk-21'
+        jdk 'jdk-21'                                  // Ensure this matches Jenkins configured JDK tool
     }
 
     stages {
@@ -19,13 +19,14 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Thetwizt/landmark-internal-devops-platform.git',
-                    credentialsId: 'github-pat'
+                    credentialsId: 'github-pat'      // Make sure this Jenkins credential exists (PAT)
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 sh '''
+                cd services/web-app                        # Navigate to correct Dockerfile location
                 docker build -t ${ECR_REPO}:${IMAGE_TAG} .
                 docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
                 '''
@@ -52,9 +53,11 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 sh '''
+                # Stop/remove any existing container
                 docker stop web-app || true
                 docker rm web-app || true
 
+                # Run new container
                 docker run -d \
                   --name web-app \
                   -p 3000:3000 \
