@@ -58,11 +58,9 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 sh '''
-                # Stop/remove any existing container
                 docker stop web-app || true
                 docker rm web-app || true
 
-                # Run new container
                 docker run -d \
                   --name web-app \
                   -p 3000:3000 \
@@ -70,6 +68,7 @@ pipeline {
                 '''
             }
         }
+    }
 
     post {
         success {
@@ -79,4 +78,5 @@ pipeline {
             echo "❌ Build Failed — Check Logs"
         }
     }
+}
 
