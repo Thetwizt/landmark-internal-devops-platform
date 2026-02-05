@@ -2,51 +2,48 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = "us-east-1"
-        AWS_ACCOUNT_ID = "371601827796"
-        ECR_REPO = "landmark-web-app"
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
-    }
-
-    tools {
-        jdk 'jdk-21'
+        AWS_REGION     = "us-east-1"
+        // Move sensitive ID to a Jenkins variable or Credential
+        AWS_ACCOUNT_ID = "371601827796" 
+        ECR_REPO       = "landmark-web-app"
+        IMAGE_TAG      = "${BUILD_NUMBER}"
+        ECR_URI        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Thetwizt/landmark-internal-devops-platform.git',
+                git branch: 'main', 
+                    url: 'https://github.com/Thetwizt/landmark-internal-devops-platform.git', 
                     credentialsId: 'github-pat'
             }
         }
 
-        stage('Authenticate to ECR') {
+        stage('Prepare ECR') {
             steps {
-                // Using double quotes for sh to allow Groovy interpolation
-                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                // 1. Create repo if missing. 2. Authenticate
+                sh """
+                aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION} || true
+                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
+                """
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Tag') {
             steps {
                 dir('services/web-app') {
-                    sh """
-                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
-                    """
+                    sh "docker build -t ${ECR_URI}:${IMAGE_TAG} ."
                 }
             }
         }
 
-        stage('Push Image to ECR') {
+        stage('Push to AWS') {
             steps {
                 sh "docker push ${ECR_URI}:${IMAGE_TAG}"
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy') {
             steps {
                 sh """
                 docker stop web-app || true
@@ -58,11 +55,15 @@ pipeline {
     }
 
     post {
+        always {
+            // BEST PRACTICE: Clean up local images to save disk space
+            sh "docker rmi ${ECR_URI}:${IMAGE_TAG} || true"
+        }
         success {
-            echo "✅ Build & Deployment Successful"
+            echo "✅ Deployment Successful: ${ECR_URI}:${IMAGE_TAG}"
         }
         failure {
-            echo "❌ Build Failed — Check Logs"
+            echo "❌ Deployment Failed. Cleaning up..."
         }
     }
 }
