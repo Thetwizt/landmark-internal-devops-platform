@@ -3,69 +3,56 @@ pipeline {
 
     environment {
         AWS_REGION = "us-east-1"
-        AWS_ACCOUNT_ID = "371601827796"               // Filled in your actual AWS account ID
+        AWS_ACCOUNT_ID = "371601827796"
         ECR_REPO = "landmark-web-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
         ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
     tools {
-        jdk 'jdk-21'                                  // Ensure this matches Jenkins configured JDK tool
+        jdk 'jdk-21'
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Thetwizt/landmark-internal-devops-platform.git',
-                    credentialsId: 'github-pat'      // Make sure this Jenkins credential exists (PAT)
-            }
-        }
-
-   stage('Build Docker Image') {
-    steps {
-        dir('services/web-app') {
-            sh '''
-            docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-            docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
-            '''
-        }
-    }
-}
-
-
+                    credentialsId: 'github-pat'
             }
         }
 
         stage('Authenticate to ECR') {
             steps {
-                sh '''
-                aws ecr get-login-password --region ${AWS_REGION} \
-                | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                '''
+                // Using double quotes for sh to allow Groovy interpolation
+                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir('services/web-app') {
+                    sh """
+                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
+                    """
+                }
             }
         }
 
         stage('Push Image to ECR') {
             steps {
-                sh '''
-                docker push ${ECR_URI}:${IMAGE_TAG}
-                '''
+                sh "docker push ${ECR_URI}:${IMAGE_TAG}"
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                sh '''
+                sh """
                 docker stop web-app || true
                 docker rm web-app || true
-
-                docker run -d \
-                  --name web-app \
-                  -p 3000:3000 \
-                  ${ECR_URI}:${IMAGE_TAG}
-                '''
+                docker run -d --name web-app -p 3000:3000 ${ECR_URI}:${IMAGE_TAG}
+                """
             }
         }
     }
@@ -79,4 +66,3 @@ pipeline {
         }
     }
 }
-
