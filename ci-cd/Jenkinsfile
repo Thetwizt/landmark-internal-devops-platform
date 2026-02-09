@@ -64,14 +64,14 @@ stage('Deploy') {
     }
 }
 
-   post {
-    failure {
-        echo "❌ Deployment failed — rolling back"
-
-        sh """
-        docker stop web-app || true
-        docker rm web-app || true
-        docker run -d --name web-app -p 3000:3000 ${ECR_URI}:previous || true
-        """
+  post {
+        always {
+            // HYGIENE: Clear workspace and remove local image to save EC2 space
+            cleanWs()
+            sh "docker rmi ${ECR_URI}:${IMAGE_TAG} || true"
+        }
+        success {
+            echo "✅ Successfully performed ${params.DEPLOY_ACTION} (Version: ${IMAGE_TAG})"
+        }
     }
 }
