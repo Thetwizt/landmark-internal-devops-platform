@@ -29,41 +29,49 @@ pipeline {
             }
         }
 
-        stage('Build & Tag') {
-            steps {
-                dir('services/web-app') {
-                    sh "docker build -t ${ECR_URI}:${IMAGE_TAG} ."
-                }
-            }
-        }
-
-        stage('Push to AWS') {
-            steps {
-                sh "docker push ${ECR_URI}:${IMAGE_TAG}"
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                sh """
-                docker stop web-app || true
-                docker rm web-app || true
-                docker run -d --name web-app -p 3000:3000 ${ECR_URI}:${IMAGE_TAG}
-                """
-            }
+       stage('Build & Tag') {
+    steps {
+        dir('services/web-app') {
+            sh """
+            docker build -t ${ECR_URI}:${IMAGE_TAG} .
+            docker tag ${ECR_URI}:${IMAGE_TAG} ${ECR_URI}:latest
+            """
         }
     }
+}
 
-    post {
-        always {
-            // BEST PRACTICE: Clean up local images to save disk space
-            sh "docker rmi ${ECR_URI}:${IMAGE_TAG} || true"
-        }
-        success {
-            echo "✅ Deployment Successful: ${ECR_URI}:${IMAGE_TAG}"
-        }
-        failure {
-            echo "❌ Deployment Failed. Cleaning up..."
-        }
+  stage('Push to AWS') {
+    steps {
+        sh """
+        docker push ${ECR_URI}:${IMAGE_TAG}
+        docker push ${ECR_URI}:latest
+        """
+    }
+}
+
+stage('Deploy') {
+    steps {
+        sh """
+        set -e
+
+        docker pull ${ECR_URI}:latest
+
+        docker stop web-app || true
+        docker rm web-app || true
+
+        docker run -d --name web-app -p 3000:3000 ${ECR_URI}:latest
+        """
+    }
+}
+
+   post {
+    failure {
+        echo "❌ Deployment failed — rolling back"
+
+        sh """
+        docker stop web-app || true
+        docker rm web-app || true
+        docker run -d --name web-app -p 3000:3000 ${ECR_URI}:previous || true
+        """
     }
 }
