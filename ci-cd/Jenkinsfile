@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         AWS_REGION     = "us-east-1"
-        // Move sensitive ID to a Jenkins variable or Credential
         AWS_ACCOUNT_ID = "371601827796" 
         ECR_REPO       = "landmark-web-app"
         IMAGE_TAG      = "${BUILD_NUMBER}"
@@ -21,7 +20,6 @@ pipeline {
 
         stage('Prepare ECR') {
             steps {
-                // 1. Create repo if missing. 2. Authenticate
                 sh """
                 aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION} || true
                 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
@@ -29,49 +27,50 @@ pipeline {
             }
         }
 
-       stage('Build & Tag') {
-    steps {
-        dir('services/web-app') {
-            sh """
-            docker build -t ${ECR_URI}:${IMAGE_TAG} .
-            docker tag ${ECR_URI}:${IMAGE_TAG} ${ECR_URI}:latest
-            """
+        stage('Build & Tag') {
+            steps {
+                dir('services/web-app') {
+                    sh """
+                    docker build -t ${ECR_URI}:${IMAGE_TAG} .
+                    docker tag ${ECR_URI}:${IMAGE_TAG} ${ECR_URI}:latest
+                    """
+                }
+            }
         }
-    }
-}
 
-  stage('Push to AWS') {
-    steps {
-        sh """
-        docker push ${ECR_URI}:${IMAGE_TAG}
-        docker push ${ECR_URI}:latest
-        """
-    }
-}
+        stage('Push to AWS') {
+            steps {
+                sh """
+                docker push ${ECR_URI}:${IMAGE_TAG}
+                docker push ${ECR_URI}:latest
+                """
+            }
+        }
 
-stage('Deploy') {
-    steps {
-        sh """
-        set -e
+        stage('Deploy') {
+            steps {
+                sh """
+                set -e
+                docker pull ${ECR_URI}:latest
+                docker stop web-app || true
+                docker rm web-app || true
+                docker run -d --name web-app -p 3000:3000 ${ECR_URI}:latest
+                """
+            }
+        }
+    } // End of Stages
 
-        docker pull ${ECR_URI}:latest
-
-        docker stop web-app || true
-        docker rm web-app || true
-
-        docker run -d --name web-app -p 3000:3000 ${ECR_URI}:latest
-        """
-    }
-}
-
-  post {
+    post {
         always {
-            // HYGIENE: Clear workspace and remove local image to save EC2 space
             cleanWs()
             sh "docker rmi ${ECR_URI}:${IMAGE_TAG} || true"
+            sh "docker rmi ${ECR_URI}:latest || true"
         }
         success {
-            echo "✅ Successfully performed ${params.DEPLOY_ACTION} (Version: ${IMAGE_TAG})"
+            echo "✅ Successfully deployed version: ${IMAGE_TAG}"
+        }
+        failure {
+            echo "❌ Build Failed - Check Console Output"
         }
     }
-}
+} // End of Pipeline
