@@ -46,21 +46,27 @@ pipeline {
                 """
             }
         }
+stage('Deploy to EC2') {
+    steps {
+        sh """
+        echo "Stopping old container..."
+        docker stop landmark-container || true
+        docker rm landmark-container || true
 
-        stage('Deploy') {
-            steps {
-            sh """
+        echo "Starting new container..."
         docker run -d \
-        --name landmark-container \
-        --restart unless-stopped \
-        -p 3000:3000 \
-        -e NODE_ENV=production \
-        -e APP_VERSION=${IMAGE_TAG} \
-        ${ECR_URI}:${IMAGE_TAG}
-      """
+          --name landmark-container \
+          --restart unless-stopped \
+          -p 3000:3000 \
+          -e NODE_ENV=production \
+          -e APP_VERSION=${IMAGE_TAG} \
+          ${ECR_URI}:${IMAGE_TAG}
 
-            }
-        }
+        echo "Deployment complete."
+        """
+    }
+}
+
     } // End of Stages
 
     post {
