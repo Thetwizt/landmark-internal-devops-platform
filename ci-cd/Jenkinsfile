@@ -49,47 +49,36 @@ pipeline {
 stage('Blue-Green Deploy') {
     steps {
         sh """
-        # Clean up any previous failed standby
+        echo "🚀 Starting new container on port 3001..."
+
+        # Remove old standby if it exists
         docker rm -f landmark-container-new || true
 
-        # Start new container on standby port 3001
+        # Start the NEW container on 3001
         docker run -d \
           --name landmark-container-new \
-          --restart unless-stopped \
           -p 3001:3000 \
           -e NODE_ENV=production \
-          -e APP_VERSION=${IMAGE_TAG} \
           ${ECR_URI}:${IMAGE_TAG}
 
-        # Wait a few seconds for initialization
-        sleep 10
+        echo "⏸️ PAUSING FOR 2 MINUTES..."
+        echo "Go to your terminal NOW and run: docker ps"
+        sleep 120 
 
-        # Health check
-        curl -f http://localhost:3001 || { 
-            echo "❌ New version failed health check. Aborting."; 
-            docker rm -f landmark-container-new; 
-            exit 1; 
-        }
+        echo "🔍 Checking health on 3001..."
+        curl -f http://localhost:3001 || exit 1
 
-        # Stop old container
+        echo "✅ Healthy! Proceeding with swap..."
         docker stop landmark-container || true
         docker rm landmark-container || true
-
-        # Move new container to production port by stopping it and starting with port 3000
+        
+        # Move the new one to the main port
         docker stop landmark-container-new
-        docker run -d \
-          --name landmark-container \
-          --restart unless-stopped \
-          -p 3000:3000 \
-          -e NODE_ENV=production \
-          -e APP_VERSION=${IMAGE_TAG} \
-          ${ECR_URI}:${IMAGE_TAG}
-
-        echo "🎉 Blue-Green deployment complete."
+        docker run -d --name landmark-container -p 3000:3000 ${ECR_URI}:${IMAGE_TAG}
+        docker rm landmark-container-new
         """
     }
 }
-
 } // End of Stages
 
     post {
