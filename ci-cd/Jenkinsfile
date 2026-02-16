@@ -49,12 +49,10 @@ pipeline {
 stage('Blue-Green Deploy') {
     steps {
         sh """
-        echo "🚀 Starting standby container on port 3001..."
-
-        # 1. Clean up any previous failed standby containers
+        # Clean up any previous failed standby
         docker rm -f landmark-container-new || true
 
-        # 2. Start the new version on 3001
+        # Start new container on standby port 3001
         docker run -d \
           --name landmark-container-new \
           --restart unless-stopped \
@@ -63,43 +61,36 @@ stage('Blue-Green Deploy') {
           -e APP_VERSION=${IMAGE_TAG} \
           ${ECR_URI}:${IMAGE_TAG}
 
-        echo "⌛ Waiting 10s for initialization..."
+        # Wait a few seconds for initialization
         sleep 10
 
-        # 3. Health Check (Using curl -f to fail the stage if not 200 OK)
-        echo "🔍 Checking health of standby..."
+        # Health check
         curl -f http://localhost:3001 || { 
-            echo "❌ New version is UNHEALTHY. Cleaning up..."; 
+            echo "❌ New version failed health check. Aborting."; 
             docker rm -f landmark-container-new; 
             exit 1; 
         }
 
-        echo "✅ Health check passed. Swapping traffic..."
-
-        # 4. THE ATOMIC SWAP
-        # We stop the old one first, then immediately swap the new one to its name
+        # Stop old container
         docker stop landmark-container || true
         docker rm landmark-container || true
-        
-        # We don't delete 'new'—we RENAME it so it becomes the primary
-        # Note: Port 3001 will still be active, but we can restart it on 3000 now
+
+        # Move new container to production port by stopping it and starting with port 3000
         docker stop landmark-container-new
-        docker rename landmark-container-new landmark-container
-        
-        # Final restart on the correct production port
         docker run -d \
           --name landmark-container \
           --restart unless-stopped \
           -p 3000:3000 \
           -e NODE_ENV=production \
+          -e APP_VERSION=${IMAGE_TAG} \
           ${ECR_URI}:${IMAGE_TAG}
 
-        docker rm -f landmark-container-new || true
         echo "🎉 Blue-Green deployment complete."
         """
     }
 }
-    } // End of Stages
+
+} // End of Stages
 
     post {
         always {
