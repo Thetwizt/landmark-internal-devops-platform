@@ -49,13 +49,16 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sh """
-                set -e
-                docker pull ${ECR_URI}:latest
-                docker stop web-app || true
-                docker rm web-app || true
-                docker run -d --name web-app -p 3000:3000 ${ECR_URI}:latest
-                """
+            sh """
+        docker run -d \
+        --name landmark-container \
+        --restart unless-stopped \
+        -p 3000:3000 \
+        -e NODE_ENV=production \
+        -e APP_VERSION=${IMAGE_TAG} \
+        ${ECR_URI}:${IMAGE_TAG}
+      """
+
             }
         }
     } // End of Stages
