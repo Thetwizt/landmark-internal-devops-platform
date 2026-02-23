@@ -48,46 +48,42 @@ pipeline {
         }
 stage('Blue-Green Deploy') {
     steps {
-        sh """
-        # Clean up any previous failed standby
-        docker rm -f landmark-container-new || true
+     sh """
+# 1. Clean up any previous failed standby
+docker rm -f landmark-container-new || true
 
-        # Start new container on standby port 3001
-        docker run -d \
-          --name landmark-container-new \
-          --restart unless-stopped \
-          -p 3001:3000 \
-          -e NODE_ENV=production \
-          -e APP_VERSION=${IMAGE_TAG} \
-          ${ECR_URI}:${IMAGE_TAG}
-
-        # Wait a few seconds for initialization
-        sleep 10
-
-        # Health check
-        curl -f http://localhost:3001/health || { 
-            echo "❌ New version failed health check. Aborting."; 
-            docker rm -f landmark-container-new; 
-            exit 1; 
-        }
-
-        # Stop old container
-        docker stop landmark-container || true
-        docker rm landmark-container || true
-
-        # Move new container to production port by stopping it and starting with port 3000
-        docker stop landmark-container-new
-       docker run -d \
+# 2. Start new version (GREEN) on standby port 3001
+docker run -d \
   --name landmark-container-new \
-  --restart unless-stopped \
   -p 3001:3000 \
-  -e NODE_ENV=production \
   -e APP_VERSION=${IMAGE_TAG} \
-  -e PORT=3000 \
   ${ECR_URI}:${IMAGE_TAG}
 
-        echo "🎉 Blue-Green deployment complete."
-        """
+# 3. Wait for it to wake up
+sleep 10
+
+# 4. Health check - If this fails, the build stops here
+curl -f http://localhost:3001/health || { 
+    echo "❌ Health check failed!"; 
+    docker rm -f landmark-container-new; 
+    exit 1; 
+}
+
+# 5. The "Switch" (The critical part)
+echo "Swapping Blue to Green..."
+docker rm -f landmark-container || true   # Kill the old BLUE
+docker stop landmark-container-new        # Stop the standby GREEN
+docker rm landmark-container-new          # Remove the standby name
+
+# 6. Start the new version as the primary (BLUE becomes GREEN)
+docker run -d \
+  --name landmark-container \
+  -p 3000:3000 \
+  -e APP_VERSION=${IMAGE_TAG} \
+  ${ECR_URI}:${IMAGE_TAG}
+
+echo "🎉 Blue-Green deployment complete."
+"""
     }
 }
 
