@@ -78,7 +78,9 @@ docker rm landmark-container-new          # Remove the standby name
 # 6. Start the new version as the primary (BLUE becomes GREEN)
 docker run -d \
   --name landmark-container \
+  --restart unless-stopped \
   -p 3000:3000 \
+  -e NODE_ENV=production \
   -e APP_VERSION=${IMAGE_TAG} \
   ${ECR_URI}:${IMAGE_TAG}
 
