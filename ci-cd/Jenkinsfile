@@ -2,44 +2,45 @@ pipeline {
     agent any
     
     environment {
-        // 1. UPDATE THIS with your Terraform Output
+        // 1. Double check these are in "quotes"
         DOCKER_HOST_IP = "100.53.183.14" 
-        
-        // 2. UPDATE THIS with your ECR URI
-        ECR_URI = "371601827796.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app"
+        ECR_URI = "your-account-id.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app"
         IMAGE_TAG = "v${BUILD_NUMBER}"
     }
 
     stages {
-        stage('Build & Push') {
-    steps {
-        script {
-            // Login first so we don't time out
-            sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}"
-            
-            // Build pointing to the subfolder path
-            // The '.' at the end tells Docker to look in 'services/web-app' for the code
-            sh "docker build -t ${ECR_URI}:${IMAGE_TAG} -f services/web-app/Dockerfile services/web-app/"
-            
-            // Push the image
-            sh "docker push ${ECR_URI}:${IMAGE_TAG}"
-        }
-    }
-}
-        stage('Remote Deploy to Terraform Host') {
+        stage('Build & Push to ECR') {
             steps {
-                // This is the NEW Day 17 logic
+                script {
+                    // Login to ECR
+                    sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}"
+                    
+                    // Build using the specific subfolder path
+                    // -f points to the file, the second path is the context
+                    sh "docker build -t ${ECR_URI}:${IMAGE_TAG} -f services/web-app/Dockerfile services/web-app/"
+                    
+                    // Push
+                    sh "docker push ${ECR_URI}:${IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Remote Deploy to Docker Host') {
+            steps {
+                // This uses the ID you created in Jenkins Credentials
                 sshagent(['docker-host-key']) {
                     sh """
                     ssh -o StrictHostKeyChecking=no ec2-user@${DOCKER_HOST_IP} << 'EOF'
                         # Login to ECR on the REMOTE host
                         aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}
                         
-                        # Clean up and Run
-                        docker stop landmark-app || true
-                        docker rm landmark-app || true
+                        # Stop existing container if it exists
+                        docker stop landmark-web-app || true
+                        docker rm landmark-web-app || true
+                        
+                        # Pull and Run
                         docker pull ${ECR_URI}:${IMAGE_TAG}
-                        docker run -d --name landmark-app -p 80:3000 ${ECR_URI}:${IMAGE_TAG}
+                        docker run -d --name landmark-web-app -p 80:3000 ${ECR_URI}:${IMAGE_TAG}
                     EOF
                     """
                 }
