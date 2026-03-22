@@ -1,107 +1,43 @@
 pipeline {
     agent any
-
+    
     environment {
-        AWS_REGION     = "us-east-1"
-        AWS_ACCOUNT_ID = "371601827796" 
-        ECR_REPO       = "landmark-web-app"
-        IMAGE_TAG      = "${BUILD_NUMBER}"
-        ECR_URI        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+        // 1. UPDATE THIS with your Terraform Output
+        DOCKER_HOST_IP = 98.86.148.101 
+        
+        // 2. UPDATE THIS with your ECR URI
+        ECR_URI = 371601827796.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app
+        IMAGE_TAG = "v${BUILD_NUMBER}"
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Build & Push') {
             steps {
-                git branch: 'main', 
-                    url: 'https://github.com/Thetwizt/landmark-internal-devops-platform.git', 
-                    credentialsId: 'github-pat'
+                // This part stays the same from your previous days
+                sh "docker build -t ${ECR_URI}:${IMAGE_TAG} ."
+                sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}"
+                sh "docker push ${ECR_URI}:${IMAGE_TAG}"
             }
         }
 
-        stage('Prepare ECR') {
+        stage('Remote Deploy to Terraform Host') {
             steps {
-                sh """
-                aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION} || true
-                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
-                """
-            }
-        }
-
-        stage('Build & Tag') {
-            steps {
-                dir('services/web-app') {
+                // This is the NEW Day 17 logic
+                sshagent(['docker-host-key']) {
                     sh """
-                    docker build -t ${ECR_URI}:${IMAGE_TAG} .
-                    docker tag ${ECR_URI}:${IMAGE_TAG} ${ECR_URI}:latest
+                    ssh -o StrictHostKeyChecking=no ec2-user@${DOCKER_HOST_IP} << 'EOF'
+                        # Login to ECR on the REMOTE host
+                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}
+                        
+                        # Clean up and Run
+                        docker stop landmark-app || true
+                        docker rm landmark-app || true
+                        docker pull ${ECR_URI}:${IMAGE_TAG}
+                        docker run -d --name landmark-app -p 80:3000 ${ECR_URI}:${IMAGE_TAG}
+                    EOF
                     """
                 }
             }
         }
-
-        stage('Push to AWS') {
-            steps {
-                sh """
-                docker push ${ECR_URI}:${IMAGE_TAG}
-                docker push ${ECR_URI}:latest
-                """
-            }
-        }
-stage('Blue-Green Deploy') {
-    steps {
-     sh """
-# 1. Clean up any previous failed standby
-docker rm -f landmark-container-new || true
-
-# 2. Start new version (GREEN) on standby port 3001
-docker run -d \
-  --name landmark-container-new \
-  -p 3001:3000 \
-  -e APP_VERSION=${IMAGE_TAG} \
-  ${ECR_URI}:${IMAGE_TAG}
-
-# 3. Wait for it to wake up
-sleep 10
-
-# 4. Health check - If this fails, the build stops here
-curl -f http://localhost:3001/health || { 
-    echo "❌ Health check failed!"; 
-    docker rm -f landmark-container-new; 
-    exit 1; 
-}
-
-# 5. The "Switch" (The critical part)
-echo "Swapping Blue to Green..."
-docker rm -f landmark-container || true   # Kill the old BLUE
-docker stop landmark-container-new        # Stop the standby GREEN
-docker rm landmark-container-new          # Remove the standby name
-
-# 6. Start the new version as the primary (BLUE becomes GREEN)
-docker run -d \
-  --name landmark-container \
-  --restart unless-stopped \
-  -p 3000:3000 \
-  -e NODE_ENV=production \
-  -e APP_VERSION=${IMAGE_TAG} \
-  ${ECR_URI}:${IMAGE_TAG}
-
-echo "🎉 Blue-Green deployment complete."
-"""
     }
 }
-
-} // End of Stages
-
-    post {
-        always {
-            cleanWs()
-            sh "docker rmi ${ECR_URI}:${IMAGE_TAG} || true"
-            sh "docker rmi ${ECR_URI}:latest || true"
-        }
-        success {
-            echo "✅ Successfully deployed version: ${IMAGE_TAG}"
-        }
-        failure {
-            echo "❌ Build Failed - Check Console Output"
-        }
-    }
-} // End of Pipeline
