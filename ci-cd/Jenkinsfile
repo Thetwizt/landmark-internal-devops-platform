@@ -12,14 +12,20 @@ pipeline {
 
     stages {
         stage('Build & Push') {
-            steps {
-                // This part stays the same from your previous days
-                sh "docker build -t ${ECR_URI}:${IMAGE_TAG} ."
-                sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}"
-                sh "docker push ${ECR_URI}:${IMAGE_TAG}"
-            }
+    steps {
+        script {
+            // Login first so we don't time out
+            sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}"
+            
+            // Build pointing to the subfolder path
+            // The '.' at the end tells Docker to look in 'services/web-app' for the code
+            sh "docker build -t ${ECR_URI}:${IMAGE_TAG} -f services/web-app/Dockerfile services/web-app/"
+            
+            // Push the image
+            sh "docker push ${ECR_URI}:${IMAGE_TAG}"
         }
-
+    }
+}
         stage('Remote Deploy to Terraform Host') {
             steps {
                 // This is the NEW Day 17 logic
