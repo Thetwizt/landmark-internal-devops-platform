@@ -4,7 +4,7 @@ pipeline {
     environment {
         // 1. Double check these are in "quotes"
         DOCKER_HOST_IP = "100.53.183.14" 
-        ECR_URI = "your-account-id.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app"
+        ECR_URI = "371601827796.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app"
         IMAGE_TAG = "v${BUILD_NUMBER}"
     }
 
