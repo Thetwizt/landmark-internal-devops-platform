@@ -6,7 +6,7 @@ pipeline {
         DOCKER_HOST_IP = "100.53.183.14" 
         
         // 2. UPDATE THIS with your ECR URI
-        ECR_URI = 371601827796.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app
+        ECR_URI = "371601827796.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app"
         IMAGE_TAG = "v${BUILD_NUMBER}"
     }
 
