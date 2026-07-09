@@ -2,45 +2,77 @@ pipeline {
     agent any
     
     environment {
-        // 1. Double check these are in "quotes"
-        DOCKER_HOST_IP = "54.173.35.180" 
+        DOCKER_HOST_IP = "54.173.35.180"
         ECR_URI = "371601827796.dkr.ecr.us-east-1.amazonaws.com/landmark-web-app"
         IMAGE_TAG = "v${BUILD_NUMBER}"
+        AWS_REGION = "us-east-1"
     }
 
     stages {
+
         stage('Build & Push to ECR') {
             steps {
                 script {
-                    // Login to ECR
-                    sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}"
-                    
-                    // Build using the specific subfolder path
-                    // -f points to the file, the second path is the context
-                    sh "docker build -t ${ECR_URI}:${IMAGE_TAG} -f services/web-app/Dockerfile services/web-app/"
-                    
-                    // Push
-                    sh "docker push ${ECR_URI}:${IMAGE_TAG}"
-                }
-            }
-        }
 
-       stage('Remote Deploy') {
-            steps {
-                sshagent(['docker-host-key']) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no ec2-user@${DOCKER_HOST_IP} << 'EOF'
-                        # Clean up old containers
-                        docker stop landmark-web-app || true
-                        docker rm landmark-web-app || true
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin ${ECR_URI}
 
-                        # Pull and Run
-                        docker pull ${ECR_URI}:${IMAGE_TAG}
-                        docker run -d --name landmark-web-app -p 80:3000 ${ECR_URI}:${IMAGE_TAG}
-EOF
+                    docker build \
+                    -t ${ECR_URI}:${IMAGE_TAG} \
+                    -f services/web-app/Dockerfile \
+                    services/web-app/
+
+                    docker push ${ECR_URI}:${IMAGE_TAG}
                     """
                 }
             }
         }
-    }  
+
+
+        stage('Remote Deploy') {
+            steps {
+
+                sshagent(['docker-host-key']) {
+
+                    sh """
+
+                    ssh -o StrictHostKeyChecking=no ec2-user@${DOCKER_HOST_IP} << EOF
+
+                    echo "Logging into ECR"
+
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin ${ECR_URI}
+
+
+                    echo "Stopping old container"
+
+                    docker stop landmark-container || true
+
+                    docker rm landmark-container || true
+
+
+                    echo "Pulling image"
+
+                    docker pull ${ECR_URI}:${IMAGE_TAG}
+
+
+                    echo "Starting container"
+
+                    docker run -d \
+                    --name landmark-container \
+                    --restart unless-stopped \
+                    -p 80:3000 \
+                    -e NODE_ENV=production \
+                    -e APP_VERSION=${IMAGE_TAG} \
+                    ${ECR_URI}:${IMAGE_TAG}
+
+
+                    EOF
+
+                    """
+                }
+            }
+        }
+    }
 }
