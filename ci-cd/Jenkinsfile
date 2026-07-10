@@ -25,22 +25,27 @@ pipeline {
             }
         }
 
-       stage('Remote Deploy') {
-            steps {
-                sshagent(['docker-host-key']) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no ec2-user@${DOCKER_HOST_IP} << 'EOF'
-                        # Clean up old containers
-                        docker stop landmark-web-app || true
-                        docker rm landmark-web-app || true
+ stage('Remote Deploy') {
+    steps {
+        sshagent(['docker-host-key']) {
+            sh """
+            ssh -o StrictHostKeyChecking=no ec2-user@${DOCKER_HOST_IP} << EOF
 
-                        # Pull and Run
-                        docker pull ${ECR_URI}:${IMAGE_TAG}
-                        docker run -d --name landmark-web-app -p 80:3000 ${ECR_URI}:${IMAGE_TAG}
+                # Login Docker host to ECR
+                aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_URI}
+
+                # Remove old container if it exists
+                docker stop landmark-web-app || true
+                docker rm landmark-web-app || true
+
+                # Pull new image
+                docker pull ${ECR_URI}:${IMAGE_TAG}
+
+                # Run application
+                docker run -d --name landmark-web-app -p 80:3000 ${ECR_URI}:${IMAGE_TAG}
+
 EOF
-                    """
-                }
-            }
+            """
         }
-    }  
+    }
 }
